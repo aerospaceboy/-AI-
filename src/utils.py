@@ -5,6 +5,7 @@ import logging
 import os
 import re
 import shutil
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
@@ -68,7 +69,14 @@ def write_text(path: Path, value: str) -> None:
 
 
 def require_ffmpeg() -> str:
-    executable = shutil.which("ffmpeg")
+    executable = None
+    if getattr(sys, "frozen", False):
+        bundle_dir = Path(getattr(sys, "_MEIPASS", Path(sys.executable).parent))
+        bundled = next(bundle_dir.glob("ffmpeg*.exe"), None)
+        if bundled is not None:
+            executable = str(bundled)
+    if not executable:
+        executable = shutil.which("ffmpeg")
     if not executable:
         raise RuntimeError("FFmpeg not found. Please install FFmpeg and add it to PATH.")
     return executable

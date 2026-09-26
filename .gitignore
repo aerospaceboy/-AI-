@@ -6,3 +6,6 @@ __pycache__/
 
 # Local source videos and generated evidence packages
 videos/
+build/
+dist/
+*.spec

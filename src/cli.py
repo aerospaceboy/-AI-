@@ -84,12 +84,15 @@ def main(argv: list[str] | None = None) -> int:
     LOG.info("=" * 50)
     LOG.info("            Video → AI Package")
     LOG.info("=" * 50)
-    LOG.info("\nConda Environment:\n%s", conda_env)
-    LOG.info("\nPython:\n%s", sys.executable)
+    if getattr(sys, "frozen", False):
+        LOG.info("\nApplication:\n%s", sys.executable)
+    else:
+        LOG.info("\nConda Environment:\n%s", conda_env)
+        LOG.info("\nPython:\n%s", sys.executable)
     LOG.info("\nVideo:\n%s\n", video.resolve())
     if config_path is not None:
         LOG.info("Config: %s", config_path.expanduser().resolve())
-    if conda_env != "video2ai":
+    if not getattr(sys, "frozen", False) and conda_env != "video2ai":
         LOG.warning("[WARN] Expected Conda environment 'video2ai'. No packages will be installed, but runtime dependencies may be missing.")
     try:
         result = run(Options(

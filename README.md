@@ -2,6 +2,14 @@
 
 将本地视频转换为可交给 ChatGPT、Codex、Claude 等 Agent 阅读的证据资料包。集成 faster-whisper、场景变化与最长间隔视觉证据、PaddleOCR、时间轴融合、OpenAI-compatible 分块总结、配置感知断点续跑及 ChatGPT 精简上传包。
 
+## 给 Windows 新手：解压即用版
+
+从项目维护者取得 `Video2AI-Windows-CPU.zip`，完整解压后打开 `Video2AI/先看我.txt`，再双击 `Video2AI.exe`。选择一个短 MP4 视频，保留默认设置，点击“开始生成”。首次运行需联网下载语音识别模型；之后可复用缓存。完成后可点“查看网页报告”，或者在“打开上传包目录”中找到可交给 ChatGPT 的 `upload_bundle.zip`。
+
+此版默认使用 CPU，不要求 NVIDIA 显卡、Conda、Python 或单独安装 FFmpeg。视频留在本机处理；首次下载语音模型仍需网络。入门版暂不包含 OCR 和 AI 自动总结，这两项在界面中不可选；需要时请按下文安装完整版。便携版未经代码签名，只运行来自可信来源的副本。
+
+维护者在 Windows 的 `video2ai` Conda 环境中执行 `python -m pip install -r requirements-build.txt`，然后运行 `python scripts/build_portable.py`，可重新制作 ZIP；不要把 `dist/` 提交到 Git。
+
 ## 重要：只使用独立 Conda 环境
 
 本项目固定使用环境名 `video2ai`。不要在 `base`、系统 Python 或其他项目环境中安装依赖。

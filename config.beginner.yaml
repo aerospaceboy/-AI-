@@ -1,0 +1,13 @@
+# 解压即用版：默认在没有 NVIDIA 显卡的 Windows 电脑上运行。
+language: null
+whisper_model: base
+device: cpu
+beam_size: 5
+batch_size: 0
+max_frame_gap: 30
+scene_sample_fps: 2
+timeline_chunk_seconds: 120
+ocr:
+  enabled: false
+llm:
+  enabled: false

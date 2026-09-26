@@ -17,7 +17,11 @@ from .config import load_yaml_options
 from .utils import default_output_path
 
 
-PROJECT_DIR = Path(__file__).resolve().parent.parent
+PROJECT_DIR = (
+    Path(sys.executable).resolve().parent
+    if getattr(sys, "frozen", False)
+    else Path(__file__).resolve().parent.parent
+)
 CONFIG_PATH = PROJECT_DIR / "video2ai.yaml"
 VIDEO_TYPES = [
     ("视频文件", "*.mp4 *.mkv *.mov *.avi *.webm *.flv *.wmv *.m4v"),
@@ -36,7 +40,11 @@ def build_command(
     llm: bool,
 ) -> list[str]:
     """Produce a shell-free command, retaining all other YAML defaults."""
-    command = [sys.executable, "-u", str(PROJECT_DIR / "video2ai.py"), str(video)]
+    command = (
+        [sys.executable, "--worker", str(video)]
+        if getattr(sys, "frozen", False)
+        else [sys.executable, "-u", str(PROJECT_DIR / "video2ai.py"), str(video)]
+    )
     if CONFIG_PATH.is_file():
         command.extend(["--config", str(CONFIG_PATH)])
     if output is not None:
@@ -58,14 +66,19 @@ class Video2AIApp:
         self.running = False
         self.stopping = False
         self.output_path: Path | None = None
+        self.portable = bool(getattr(sys, "frozen", False))
 
         defaults = load_yaml_options(CONFIG_PATH) if CONFIG_PATH.is_file() else {}
         self.video_var = tk.StringVar()
         self.output_var = tk.StringVar()
-        self.model_var = tk.StringVar(value=str(defaults.get("whisper_model", "small")))
+        self.model_var = tk.StringVar(value=str(defaults.get("whisper_model", "base" if self.portable else "small")))
         self.device_var = tk.StringVar(value=str(defaults.get("device", "auto")))
         self.ocr_var = tk.BooleanVar(value=not bool(defaults.get("no_ocr", False)))
         self.llm_var = tk.BooleanVar(value=not bool(defaults.get("no_llm", False)))
+        if self.portable:
+            self.device_var.set("cpu")
+            self.ocr_var.set(False)
+            self.llm_var.set(False)
         self.status_var = tk.StringVar(value="请选择一个视频")
         self._build_ui()
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
@@ -93,15 +106,22 @@ class Video2AIApp:
         ttk.Label(settings, text="语音模型").pack(side="left")
         ttk.Combobox(
             settings, textvariable=self.model_var, state="readonly", width=12,
-            values=("tiny", "base", "small", "medium", "large-v3"),
+            values=("tiny", "base", "small") if self.portable else ("tiny", "base", "small", "medium", "large-v3"),
         ).pack(side="left", padx=(7, 20))
         ttk.Label(settings, text="计算设备").pack(side="left")
         ttk.Combobox(
-            settings, textvariable=self.device_var, state="readonly", width=8,
-            values=("auto", "cuda", "cpu"),
+            settings, textvariable=self.device_var,
+            state="disabled" if self.portable else "readonly", width=8,
+            values=("cpu",) if self.portable else ("auto", "cuda", "cpu"),
         ).pack(side="left", padx=(7, 20))
-        ttk.Checkbutton(settings, text="画面文字 OCR", variable=self.ocr_var).pack(side="left", padx=(0, 18))
-        ttk.Checkbutton(settings, text="AI 总结", variable=self.llm_var).pack(side="left")
+        ttk.Checkbutton(
+            settings, text="画面文字 OCR", variable=self.ocr_var,
+            state="disabled" if self.portable else "normal",
+        ).pack(side="left", padx=(0, 18))
+        ttk.Checkbutton(
+            settings, text="AI 总结", variable=self.llm_var,
+            state="disabled" if self.portable else "normal",
+        ).pack(side="left")
 
         actions = ttk.Frame(frame)
         actions.grid(row=4, column=0, columnspan=3, sticky="ew", pady=(10, 10))
