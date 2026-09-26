@@ -63,6 +63,7 @@ def extract_keyframes(
     max_gap: float = 30.0,
     scene_sample_fps: float = 2.0,
     show_progress: bool = False,
+    filename_prefix: str = "frame",
 ) -> list[dict[str, Any]]:
     try:
         import cv2
@@ -108,7 +109,7 @@ def extract_keyframes(
                     })
                 continue
             saved_count += 1
-            filename = f"frame_{saved_count:04d}.jpg"
+            filename = f"{filename_prefix}_{saved_count:04d}.jpg"
             target = frames_dir / filename
             # cv2.imwrite is not Unicode-safe on some Windows builds.
             encoded_ok, encoded = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 90])

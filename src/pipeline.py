@@ -5,9 +5,11 @@ import platform
 import sys
 import hashlib
 import json
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+from zipfile import BadZipFile, ZipFile
 
 from . import __version__
 from .asr import resolve_device, transcribe
@@ -15,7 +17,7 @@ from .audio import extract_audio
 from .chatgpt_export import export_chatgpt_package
 from .exporter import export_handoff, export_ocr, export_package_readme, export_timeline, export_transcript
 from .llm import NoLLMProvider, provider_from_options
-from .ocr import NoOCRBackend, create_backend, run_ocr
+from .ocr import create_backend, run_ocr
 from .scenes import extract_keyframes
 from .summarizer import basic_summary, generate_summary
 from .timeline import build_timeline
@@ -84,6 +86,47 @@ def _mark_done(state: dict[str, Any], stage: str, signature: str, **details: Any
     state[stage] = {"status": "done", "signature": signature, **details}
 
 
+def _frames_complete(output: Path, scenes: Any) -> bool:
+    return bool(
+        isinstance(scenes, list) and scenes
+        and all(
+            isinstance(item, dict) and isinstance(item.get("frame"), str)
+            and Path(item["frame"]).name == item["frame"]
+            and (output / "frames" / item["frame"]).is_file()
+            and (output / "frames" / item["frame"]).stat().st_size > 0
+            for item in scenes
+        )
+    )
+
+
+def _package_complete(output: Path) -> bool:
+    package = output / "chatgpt"
+    manifest = read_json(package / "manifest.json", None)
+    if not isinstance(manifest, dict):
+        return False
+    required = [
+        output / "frames.zip", package / "upload_bundle.zip",
+        package / "CHATGPT_HANDOFF.md", package / "VIDEO_EVIDENCE.md",
+    ]
+    for sheet in manifest.get("contact_sheets", []):
+        if not isinstance(sheet, dict) or not isinstance(sheet.get("file"), str):
+            return False
+        required.append(package / sheet["file"])
+    if not all(path.is_file() and path.stat().st_size > 0 for path in required):
+        return False
+    try:
+        with ZipFile(output / "frames.zip") as frame_archive:
+            if not frame_archive.namelist():
+                return False
+        with ZipFile(package / "upload_bundle.zip") as upload_archive:
+            names = set(upload_archive.namelist())
+            expected = {"CHATGPT_HANDOFF.md", "VIDEO_EVIDENCE.md", "manifest.json"}
+            expected.update(sheet["file"] for sheet in manifest.get("contact_sheets", []))
+            return expected <= names
+    except (BadZipFile, OSError):
+        return False
+
+
 def run(options: Options) -> Path:
     video = options.video.expanduser().resolve()
     output = options.output.expanduser().resolve()
@@ -126,6 +169,7 @@ def run(options: Options) -> Path:
     transcript_path = raw / "transcript.json"
     transcript_data = read_json(transcript_path, None)
     has_audio = bool(transcript_data.get("has_audio", True)) if isinstance(transcript_data, dict) else True
+    asr_rebuilt = False
     if transcript_data is not None and _cached(
         state, "asr", asr_signature, transcript_path, allow_legacy=True
     ) and not (force_all or options.force_asr):
@@ -155,6 +199,7 @@ def run(options: Options) -> Path:
         write_json(transcript_path, transcript_data)
         _mark_done(state, "asr", asr_signature, model=options.whisper_model)
         _save_state(state_path, state)
+        asr_rebuilt = True
     transcript_data = transcript_data or {"segments": [], "has_audio": False}
     segments = transcript_data.get("segments", [])
     export_transcript(output / "transcript.md", segments)
@@ -171,7 +216,7 @@ def run(options: Options) -> Path:
     frame_state = state.get("frames")
     migrated_frames = False
     if (
-        scenes is not None and isinstance(frame_state, dict)
+        _frames_complete(output, scenes) and isinstance(frame_state, dict)
         and frame_state.get("signature") == legacy_frames_signature
         and not (force_all or options.force_frames)
     ):
@@ -182,22 +227,26 @@ def run(options: Options) -> Path:
         )
         _save_state(state_path, state)
         migrated_frames = True
-    if scenes is not None and _cached(state, "frames", frames_signature, scenes_path) and not (force_all or options.force_frames):
+    frames_rebuilt = False
+    if _frames_complete(output, scenes) and _cached(state, "frames", frames_signature, scenes_path) and not (force_all or options.force_frames):
         LOG.info("[SKIP] Scene detection already completed.")
     else:
         LOG.info("[4/7] Detecting keyframes...")
-        for old in frames.glob("frame_*.jpg"):
-            old.unlink()
-        scenes = extract_keyframes(
+        new_scenes = extract_keyframes(
             video, frames, info["duration"], options.max_frame_gap,
             options.scene_sample_fps, show_progress=True,
+            filename_prefix=f"frame_{uuid.uuid4().hex[:8]}",
         )
+        if not _frames_complete(output, new_scenes):
+            raise RuntimeError("Keyframe extraction produced no complete visual evidence")
+        scenes = new_scenes
         write_json(scenes_path, scenes)
         _mark_done(
             state, "frames", frames_signature, max_frame_gap=options.max_frame_gap,
             scene_sample_fps=options.scene_sample_fps,
         )
         _save_state(state_path, state)
+        frames_rebuilt = True
     scenes = scenes or []
 
     ocr_path = raw / "ocr.json"
@@ -216,19 +265,25 @@ def run(options: Options) -> Path:
     if (
         migrated_frames and ocr_records is not None and isinstance(ocr_state, dict)
         and ocr_state.get("signature") == legacy_ocr_signature
-        and not (force_all or options.force_ocr)
+        and not (force_all or options.force_ocr or frames_rebuilt)
     ):
         ocr_engine = str(ocr_state.get("engine", state.get("ocr_engine", "cached")))
         _mark_done(state, "ocr", ocr_signature, engine=ocr_engine, migrated=True)
         _save_state(state_path, state)
         migrated_ocr = True
+    ocr_rebuilt = False
     if options.no_ocr:
         LOG.info("[SKIP] OCR disabled.")
         ocr_records = []
         write_json(ocr_path, ocr_records)
         _mark_done(state, "ocr", ocr_signature, engine="none")
         _save_state(state_path, state)
-    elif ocr_records is not None and _cached(state, "ocr", ocr_signature, ocr_path) and not (force_all or options.force_ocr):
+    elif (
+        ocr_records is not None and _cached(state, "ocr", ocr_signature, ocr_path)
+        and isinstance(state.get("ocr"), dict)
+        and state["ocr"].get("engine") != "none"
+        and not (force_all or options.force_ocr or frames_rebuilt)
+    ):
         LOG.info("[SKIP] OCR already completed.")
         ocr_engine = str(state.get("ocr_engine", "cached"))
     else:
@@ -240,6 +295,7 @@ def run(options: Options) -> Path:
         _mark_done(state, "ocr", ocr_signature, engine=ocr_engine)
         state["ocr_engine"] = ocr_engine
         _save_state(state_path, state)
+        ocr_rebuilt = True
     ocr_records = ocr_records or []
     export_ocr(output / "ocr.md", ocr_records)
 
@@ -257,14 +313,15 @@ def run(options: Options) -> Path:
     if (
         migrated_frames and migrated_ocr and timeline is not None and isinstance(timeline_state, dict)
         and timeline_state.get("signature") == legacy_timeline_signature
-        and not (force_all or options.force_timeline)
+        and not (force_all or options.force_timeline or asr_rebuilt or frames_rebuilt or ocr_rebuilt)
     ):
         _mark_done(
             state, "timeline", timeline_signature,
             chunk_seconds=options.timeline_chunk_seconds, migrated=True,
         )
         _save_state(state_path, state)
-    if timeline is not None and _cached(state, "timeline", timeline_signature, timeline_path) and not (force_all or options.force_timeline):
+    timeline_rebuilt = False
+    if timeline is not None and _cached(state, "timeline", timeline_signature, timeline_path) and not (force_all or options.force_timeline or asr_rebuilt or frames_rebuilt or ocr_rebuilt):
         LOG.info("[SKIP] Timeline already exists.")
     else:
         LOG.info("[6/7] Building timeline...")
@@ -274,6 +331,7 @@ def run(options: Options) -> Path:
         write_json(timeline_path, timeline)
         _mark_done(state, "timeline", timeline_signature, chunk_seconds=options.timeline_chunk_seconds)
         _save_state(state_path, state)
+        timeline_rebuilt = True
     timeline = timeline or []
     export_timeline(output / "timeline.md", timeline)
 
@@ -282,7 +340,13 @@ def run(options: Options) -> Path:
     summary_signature = _signature({
         "version": 3, "timeline": timeline_signature, "provider": provider.cache_key,
     })
-    if _cached(state, "summary", summary_signature, summary_path) and not (force_all or options.force_summary):
+    summary_state = state.get("summary")
+    summary_failed = (
+        not isinstance(provider, NoLLMProvider)
+        and isinstance(summary_state, dict) and summary_state.get("llm") is False
+    )
+    summary_rebuilt = False
+    if _cached(state, "summary", summary_signature, summary_path) and not (force_all or options.force_summary or timeline_rebuilt or summary_failed):
         LOG.info("[SKIP] Summary already exists.")
     else:
         LOG.info("[7/7] Generating AI summary...")
@@ -301,6 +365,7 @@ def run(options: Options) -> Path:
             details["llm_error"] = llm_error
         _mark_done(state, "summary", summary_signature, **details)
         _save_state(state_path, state)
+        summary_rebuilt = True
 
     metadata: dict[str, Any] = {
         "source_video": str(video), **info,
@@ -320,10 +385,20 @@ def run(options: Options) -> Path:
         "summary": summary_signature,
     })
     chatgpt_manifest = output / "chatgpt" / "manifest.json"
-    if _cached(state, "chatgpt_package", chatgpt_signature, chatgpt_manifest):
+    if (
+        _cached(state, "chatgpt_package", chatgpt_signature, chatgpt_manifest)
+        and _package_complete(output) and not (frames_rebuilt or summary_rebuilt)
+    ):
         LOG.info("[SKIP] ChatGPT upload package already exists.")
     else:
         export_chatgpt_package(output, scenes)
         _mark_done(state, "chatgpt_package", chatgpt_signature)
+        active_frames = {scene["frame"] for scene in scenes}
+        for stale in frames.glob("frame_*.jpg"):
+            if stale.name not in active_frames:
+                try:
+                    stale.unlink()
+                except OSError as exc:
+                    LOG.warning("[WARN] Could not remove stale generated frame %s: %s", stale, exc)
     _save_state(state_path, state)
     return output
