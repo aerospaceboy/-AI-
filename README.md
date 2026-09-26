@@ -4,11 +4,11 @@
 
 ## 给 Windows 新手：解压即用版
 
-从项目维护者取得 `Video2AI-Windows-CPU.zip`，完整解压后打开 `Video2AI/先看我.txt`，再双击 `Video2AI.exe`。选择一个短 MP4 视频，保留默认设置，点击“开始生成”。首次运行需联网下载语音识别模型；之后可复用缓存。完成后可点“查看网页报告”，或者在“打开上传包目录”中找到可交给 ChatGPT 的 `upload_bundle.zip`。
+从项目维护者取得 `Video2AI-Windows-CPU.zip`，完整解压后打开 `Video2AI/先看我.txt`，再双击 `Video2AI.exe`。选择一个短 MP4 视频，保留默认设置，点击“开始生成”。默认 `base` 语音模型已经随包提供，无需首次下载；之后可复用处理缓存。完成后可点“查看网页报告”，或者在“打开上传包目录”中找到可交给 ChatGPT 的 `upload_bundle.zip`。
 
-此版默认使用 CPU，不要求 NVIDIA 显卡、Conda、Python 或单独安装 FFmpeg。视频留在本机处理；首次下载语音模型仍需网络。入门版暂不包含 OCR 和 AI 自动总结，这两项在界面中不可选；需要时请按下文安装完整版。便携版未经代码签名，只运行来自可信来源的副本。
+此版默认使用 CPU，不要求 NVIDIA 显卡、Conda、Python、网络或单独安装 FFmpeg。视频留在本机处理；只有主动切换到 `tiny` 或 `small` 模型时，首次下载该模型需要网络。入门版暂不包含 OCR 和 AI 自动总结，这两项在界面中不可选；需要时请按下文安装完整版。便携版未经代码签名，只运行来自可信来源的副本。
 
-维护者在 Windows 的 `video2ai` Conda 环境中执行 `python -m pip install -r requirements-build.txt`，然后运行 `python scripts/build_portable.py`，可重新制作 ZIP；不要把 `dist/` 提交到 Git。
+维护者在 Windows 的 `video2ai` Conda 环境中执行 `python -m pip install -r requirements-build.txt`，然后运行 `python scripts/build_portable.py`，可重新制作 ZIP；构建时如果本机尚无固定版本的 `base` 模型，需要联网获取。不要把 `dist/` 提交到 Git。
 
 ## 重要：只使用独立 Conda 环境
 

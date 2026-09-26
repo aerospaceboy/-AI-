@@ -1,11 +1,21 @@
 from __future__ import annotations
 
 import logging
+import sys
 from pathlib import Path
 from typing import Any
 
 
 LOG = logging.getLogger("video2ai")
+
+
+def model_location(model_name: str) -> str:
+    """Use the bundled default model in the Windows starter build."""
+    if getattr(sys, "frozen", False) and model_name == "base":
+        bundled = Path(sys.executable).resolve().parent / "models" / "base"
+        if all((bundled / name).is_file() for name in ("config.json", "model.bin", "tokenizer.json")):
+            return str(bundled)
+    return model_name
 
 
 def resolve_device(requested: str) -> tuple[str, str]:
@@ -46,7 +56,7 @@ def transcribe(
 
     def run_once(selected_device: str, selected_compute_type: str) -> tuple[list[dict[str, Any]], Any]:
         LOG.info("ASR device: %s (%s)", selected_device, selected_compute_type)
-        model = WhisperModel(model_name, device=selected_device, compute_type=selected_compute_type)
+        model = WhisperModel(model_location(model_name), device=selected_device, compute_type=selected_compute_type)
         kwargs = {
             "language": language,
             "vad_filter": True,

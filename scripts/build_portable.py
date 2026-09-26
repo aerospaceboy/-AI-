@@ -12,6 +12,8 @@ from zipfile import ZIP_DEFLATED, ZipFile
 
 
 ROOT = Path(__file__).resolve().parent.parent
+BASE_MODEL_REVISION = "ebe41f70d5b6dfa9166e2c581c45c9c0cfc57b66"
+BASE_MODEL_FILES = ("config.json", "model.bin", "tokenizer.json", "vocabulary.txt")
 
 
 def main() -> int:
@@ -37,7 +39,7 @@ def main() -> int:
     for package in ("ctranslate2", "av", "onnxruntime"):
         command += ["--collect-binaries", package]
     command += ["--collect-data", "faster_whisper"]
-    for package in ("paddle", "paddleocr", "torch", "transformers", "librosa", "pandas", "pytest"):
+    for package in ("paddle", "paddleocr", "torch", "transformers", "librosa", "pandas", "pytest", "imageio_ffmpeg"):
         command += ["--exclude-module", package]
     command.append(str(ROOT / "video2ai_app.py"))
     subprocess.run(command, check=True, cwd=ROOT)
@@ -45,6 +47,21 @@ def main() -> int:
     app_dir = dist_dir / "Video2AI"
     shutil.copyfile(ROOT / "config.beginner.yaml", app_dir / "video2ai.yaml")
     shutil.copyfile(ROOT / "给新手的使用说明.txt", app_dir / "先看我.txt")
+    from huggingface_hub import snapshot_download
+
+    model_snapshot = Path(snapshot_download(
+        repo_id="Systran/faster-whisper-base",
+        revision=BASE_MODEL_REVISION,
+        allow_patterns=list(BASE_MODEL_FILES),
+    ))
+    model_dir = app_dir / "models" / "base"
+    model_dir.mkdir(parents=True, exist_ok=True)
+    for name in BASE_MODEL_FILES:
+        source = model_snapshot / name
+        if not source.is_file() or source.stat().st_size == 0:
+            raise FileNotFoundError(f"Bundled model file missing: {source}")
+        shutil.copyfile(source, model_dir / name)
+    shutil.copyfile(ROOT / "MODEL_NOTICE.txt", app_dir / "模型来源与许可.txt")
     archive_path = dist_dir / "Video2AI-Windows-CPU.zip"
     with ZipFile(archive_path, "w", ZIP_DEFLATED, compresslevel=6) as archive:
         for source in app_dir.rglob("*"):
