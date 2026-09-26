@@ -18,6 +18,7 @@ from .chatgpt_export import export_chatgpt_package
 from .exporter import export_handoff, export_ocr, export_package_readme, export_timeline, export_transcript
 from .llm import NoLLMProvider, provider_from_options
 from .ocr import create_backend, run_ocr
+from .report import export_report
 from .scenes import extract_keyframes
 from .summarizer import basic_summary, generate_summary
 from .timeline import build_timeline
@@ -380,6 +381,7 @@ def run(options: Options) -> Path:
     write_json(output / "metadata.json", metadata)
     export_package_readme(output / "README.md", video, info["duration"])
     export_handoff(output / "AI_HANDOFF.md")
+    export_report(output, metadata, timeline)
     chatgpt_signature = _signature({
         "version": 2, "frames": frames_signature, "timeline": timeline_signature,
         "summary": summary_signature,

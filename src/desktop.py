@@ -111,6 +111,8 @@ class Video2AIApp:
         self.stop_button.pack(side="left", padx=8)
         self.open_button = ttk.Button(actions, text="打开资料包", command=self._open_output, state="disabled")
         self.open_button.pack(side="left", padx=(12, 8))
+        self.report_button = ttk.Button(actions, text="查看网页报告", command=self._open_report, state="disabled")
+        self.report_button.pack(side="left", padx=(0, 8))
         self.bundle_button = ttk.Button(actions, text="打开上传包目录", command=self._open_bundle, state="disabled")
         self.bundle_button.pack(side="left")
 
@@ -169,6 +171,7 @@ class Video2AIApp:
         self.start_button.configure(state="disabled")
         self.stop_button.configure(state="normal")
         self.open_button.configure(state="disabled")
+        self.report_button.configure(state="disabled")
         self.bundle_button.configure(state="disabled")
         self.status_var.set("正在启动…")
         self.progress.start(12)
@@ -247,6 +250,8 @@ class Video2AIApp:
             self.status_var.set(f"处理失败，退出码 {return_code}。请查看日志。")
         if self.output_path and self.output_path.is_dir():
             self.open_button.configure(state="normal")
+            if return_code == 0 and (self.output_path / "report.html").is_file():
+                self.report_button.configure(state="normal")
             if return_code == 0 and (self.output_path / "chatgpt" / "upload_bundle.zip").is_file():
                 self.bundle_button.configure(state="normal")
 
@@ -275,6 +280,12 @@ class Video2AIApp:
     def _open_output(self) -> None:
         if self.output_path and self.output_path.is_dir():
             os.startfile(self.output_path)
+
+    def _open_report(self) -> None:
+        if self.output_path:
+            report = self.output_path / "report.html"
+            if report.is_file():
+                os.startfile(report)
 
     def _open_bundle(self) -> None:
         if self.output_path:

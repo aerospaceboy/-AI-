@@ -79,6 +79,7 @@ def export_package_readme(path: Path, source: Path, duration: float) -> None:
 ## 文件说明
 
 - `summary.md`：快速了解内容和当前状态。
+- `report.html`：在浏览器中离线浏览和搜索证据。
 - `timeline.md`：按时间记录完整过程。
 - `transcript.md`：原始语音转写。
 - `ocr.md`：屏幕 OCR 原文。

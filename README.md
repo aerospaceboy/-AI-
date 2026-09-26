@@ -47,6 +47,8 @@ python -m pip install -r requirements-ocr-paddle.txt
 
 双击项目中的 `start_video2ai.bat`，即可打开桌面界面。选择视频后点击“开始生成”；界面会显示运行日志和场景扫描进度。完成后可打开输出目录或 `chatgpt/upload_bundle.zip` 所在目录。“停止”会终止当前任务；再次开始会利用已有阶段缓存继续。
 
+处理完成后点击“查看网页报告”，可在默认浏览器离线阅读章节、字幕、OCR 和关键画面，并搜索文字。也可以直接打开输出目录中的 `report.html`；页面只引用同目录的 `frames/` 图片，不需要网络服务。
+
 桌面界面调用同一个 CLI，默认参数来自 `video2ai.yaml`。支持切换语音模型、计算设备、OCR 和 AI 总结；其他参数仍可在 YAML 中配置。AI 总结需要事先配置可访问的 OpenAI-compatible 服务。
 
 也可以在 Anaconda Prompt 中启动：
@@ -154,6 +156,7 @@ test_ai/
 ├── README.md                 资料包入口（不是本文件）
 ├── AI_HANDOFF.md             给下一个 Agent 的接手提示
 ├── summary.md
+├── report.html               离线可搜索的网页报告
 ├── transcript.md
 ├── timeline.md
 ├── timeline.json
