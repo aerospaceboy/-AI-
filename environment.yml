@@ -1,0 +1,18 @@
+name: video2ai
+
+channels:
+  - nvidia
+  - conda-forge
+  - defaults
+
+dependencies:
+  - python=3.11
+  - tk
+  - ffmpeg
+  # GPU runtime used by CTranslate2/faster-whisper on Windows.
+  - cuda-cudart=12.8
+  - libcublas=12.8
+  - cudnn=9.7.1.26
+  - pip
+  - pip:
+      - -r requirements-ocr-paddle.txt

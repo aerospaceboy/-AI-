@@ -1,0 +1,8 @@
+.env
+.idea/
+__pycache__/
+.pytest_cache/
+*.py[cod]
+
+# Local source videos and generated evidence packages
+videos/

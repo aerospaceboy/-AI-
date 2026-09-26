@@ -1,0 +1,7 @@
+# Install only after activating the dedicated `video2ai` Conda environment.
+faster-whisper>=1.1.0,<2
+numpy>=1.24,<3
+opencv-python-headless>=4.8,<5
+scenedetect>=0.6.3,<0.7
+PyYAML>=6,<7
+pytest>=8,<10

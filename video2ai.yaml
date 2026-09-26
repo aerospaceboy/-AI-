@@ -1,0 +1,17 @@
+# 本机推荐配置。命令行参数始终可以覆盖这些值。
+language: null
+whisper_model: large-v3
+hotwords: FPGA,EDA,RTL,Verilog,Vivado,ModelSim,Quartus,中科亿海微
+beam_size: 5
+batch_size: 0
+device: cuda
+max_frame_gap: 30
+scene_sample_fps: 2
+timeline_chunk_seconds: 120
+ocr:
+  enabled: true
+  backend: paddleocr
+llm:
+  enabled: false
+  base_url: http://127.0.0.1:11434/v1
+  model: qwen2.5:7b

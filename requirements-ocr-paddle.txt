@@ -1,0 +1,4 @@
+# Optional OCR backend. Install only inside the `video2ai` environment.
+-r requirements.txt
+paddlepaddle>=3.2,<4
+paddleocr>=3.3,<4
