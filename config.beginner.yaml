@@ -10,4 +10,11 @@ timeline_chunk_seconds: 120
 ocr:
   enabled: false
 llm:
+  # 界面勾选“AI 总结”时启用；密钥来自 .env 或 OPENAI_API_KEY.txt。
   enabled: false
+  base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
+  model: qwen3.8-flash
+vlm:
+  enabled: false
+  model: qwen3-vl-flash
+  workers: 4

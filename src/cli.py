@@ -14,6 +14,27 @@ from .utils import default_output_path, setup_logging
 
 LOG = logging.getLogger("video2ai")
 
+VIDEO_EXTENSIONS = {".mp4", ".mkv", ".mov", ".avi", ".webm", ".flv", ".wmv", ".m4v"}
+
+
+def expand_inputs(video: Path, output: Path | None) -> list[Path]:
+    """A directory input means batch mode: every video file directly inside it
+    is processed in name order, each into its own default <name>_ai folder."""
+    if video.is_file() or not video.exists():
+        return [video]
+    if output is not None:
+        raise SystemExit(
+            "--output cannot be combined with a directory input; "
+            "each video in a batch is written to its own <name>_ai folder."
+        )
+    found = sorted(
+        path for path in video.iterdir()
+        if path.is_file() and path.suffix.lower() in VIDEO_EXTENSIONS
+    )
+    if not found:
+        raise SystemExit(f"No video files found in directory: {video}")
+    return found
+
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Convert a video into an AI-readable evidence package.")
@@ -39,9 +60,17 @@ def build_parser() -> argparse.ArgumentParser:
     llm_group.add_argument("--llm", dest="no_llm", action="store_false", help="Enable configured LLM.")
     llm_group.add_argument("--no-llm", dest="no_llm", action="store_true")
     parser.set_defaults(no_llm=False)
+    vlm_group = parser.add_mutually_exclusive_group()
+    vlm_group.add_argument("--vlm", dest="no_vlm", action="store_false", help="Enable vision-model keyframe descriptions.")
+    vlm_group.add_argument("--no-vlm", dest="no_vlm", action="store_true")
+    parser.set_defaults(no_vlm=True, vlm_base_url=None, vlm_model=None, vlm_workers=4)
     parser.add_argument("--base-url")
     parser.add_argument("--api-key")
     parser.add_argument("--model")
+    parser.add_argument(
+        "--llm-workers", type=int, default=4,
+        help="Concurrent chunk summarization requests (1-16).",
+    )
     parser.add_argument("--overwrite", action="store_true")
     parser.add_argument("--force-asr", action="store_true")
     parser.add_argument("--force-frames", action="store_true")
@@ -76,10 +105,12 @@ def main(argv: list[str] | None = None) -> int:
         raise SystemExit("Frame gap and timeline chunk size must be positive")
     if args.scene_sample_fps < 0:
         raise SystemExit("--scene-sample-fps cannot be negative")
+    if not 1 <= args.llm_workers <= 16:
+        raise SystemExit("--llm-workers must be between 1 and 16")
     setup_logging(args.verbose)
     load_dotenv(Path.cwd() / ".env")
     video = args.video.expanduser()
-    output = args.output or default_output_path(video)
+    videos = expand_inputs(video, args.output)
     conda_env = os.getenv("CONDA_DEFAULT_ENV", "(not active)")
     LOG.info("=" * 50)
     LOG.info("            Video → AI Package")
@@ -90,24 +121,40 @@ def main(argv: list[str] | None = None) -> int:
         LOG.info("\nConda Environment:\n%s", conda_env)
         LOG.info("\nPython:\n%s", sys.executable)
     LOG.info("\nVideo:\n%s\n", video.resolve())
+    if len(videos) > 1:
+        LOG.info("Batch mode: %d videos to process.\n", len(videos))
     if config_path is not None:
         LOG.info("Config: %s", config_path.expanduser().resolve())
     if not getattr(sys, "frozen", False) and conda_env != "video2ai":
         LOG.warning("[WARN] Expected Conda environment 'video2ai'. No packages will be installed, but runtime dependencies may be missing.")
-    try:
-        result = run(Options(
-            video=video, output=output, language=args.language, whisper_model=args.whisper_model,
-            hotwords=args.hotwords, initial_prompt_file=args.initial_prompt_file,
-            beam_size=args.beam_size, batch_size=args.batch_size,
-            device=args.device, max_frame_gap=args.max_frame_gap, no_ocr=args.no_ocr,
-            scene_sample_fps=args.scene_sample_fps,
-            timeline_chunk_seconds=args.timeline_chunk_seconds,
-            no_llm=args.no_llm, base_url=args.base_url, api_key=args.api_key, model=args.model,
-            overwrite=args.overwrite, force_asr=args.force_asr, force_frames=args.force_frames,
-            force_ocr=args.force_ocr, force_timeline=args.force_timeline, force_summary=args.force_summary,
-        ))
-    except (RuntimeError, FileNotFoundError, ValueError) as exc:
-        LOG.error("[ERROR] %s", exc)
-        return 1
-    LOG.info("\nDone.\n\nOutput:\n%s", result)
-    return 0
+    failed = 0
+    for index, item in enumerate(videos, 1):
+        if len(videos) > 1:
+            LOG.info("")
+            LOG.info("=== [%d/%d] %s ===", index, len(videos), item.name)
+        try:
+            result = run(Options(
+                video=item, output=args.output or default_output_path(item),
+                language=args.language, whisper_model=args.whisper_model,
+                hotwords=args.hotwords, initial_prompt_file=args.initial_prompt_file,
+                beam_size=args.beam_size, batch_size=args.batch_size,
+                device=args.device, max_frame_gap=args.max_frame_gap, no_ocr=args.no_ocr,
+                scene_sample_fps=args.scene_sample_fps,
+                timeline_chunk_seconds=args.timeline_chunk_seconds,
+                no_llm=args.no_llm, base_url=args.base_url, api_key=args.api_key,
+                model=args.model, llm_workers=args.llm_workers, no_vlm=args.no_vlm,
+                vlm_base_url=args.vlm_base_url, vlm_model=args.vlm_model,
+                vlm_workers=args.vlm_workers, overwrite=args.overwrite,
+                force_asr=args.force_asr, force_frames=args.force_frames,
+                force_ocr=args.force_ocr, force_timeline=args.force_timeline,
+                force_summary=args.force_summary,
+            ))
+        except (RuntimeError, FileNotFoundError, ValueError) as exc:
+            LOG.error("[ERROR] %s", exc)
+            failed += 1
+            continue
+        LOG.info("\nDone.\n\nOutput:\n%s", result)
+    if len(videos) > 1:
+        LOG.info("")
+        LOG.info("Batch finished: %d ok, %d failed.", len(videos) - failed, failed)
+    return 1 if failed else 0

@@ -95,6 +95,22 @@ def _render_frames(item: dict[str, Any]) -> str:
     return f'<div class="frames">{"".join(figures)}</div>' if figures else ""
 
 
+def _render_descriptions(item: dict[str, Any]) -> str:
+    descriptions = item.get("descriptions")
+    if not isinstance(descriptions, list) or not descriptions:
+        return ""
+    rows: list[str] = []
+    for entry in descriptions:
+        if not isinstance(entry, dict):
+            continue
+        frame_label = escape(str(entry.get("frame", "")))
+        text = escape(str(entry.get("text", "")))
+        rows.append(f'<p class="line"><strong>{frame_label}</strong> {text}</p>')
+    if not rows:
+        return ""
+    return f'<div class="content-block" style="margin-top:12px"><h3>AI 画面理解（模型生成，请以原图核实）</h3>{"".join(rows)}</div>'
+
+
 def render_report(metadata: dict[str, Any], timeline: list[dict[str, Any]], summary: str) -> str:
     duration = format_timestamp(metadata.get("duration", 0))
     frame_count = int(metadata.get("frame_count", 0) or 0)
@@ -116,7 +132,7 @@ def render_report(metadata: dict[str, Any], timeline: list[dict[str, Any]], summ
             f'<h2 class="chapter-title">{title}</h2></header>'
             f'<div class="columns"><div class="content-block"><h3>语音字幕</h3>{_render_lines(item.get("speech"))}</div>'
             f'<div class="content-block"><h3>画面文字 OCR</h3>{_render_lines(item.get("ocr"))}</div></div>'
-            f'{_render_frames(item)}</section>'
+            f'{_render_descriptions(item)}{_render_frames(item)}</section>'
         )
     content = "".join(chapters) or '<div class="panel empty">没有可用的时间轴内容。</div>'
     return (

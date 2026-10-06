@@ -33,7 +33,9 @@ def build_timeline(
     scenes: list[dict[str, Any]],
     duration: float,
     chunk_seconds: float = 120.0,
+    descriptions: dict[str, str] | None = None,
 ) -> list[dict[str, Any]]:
+    descriptions = descriptions or {}
     if duration <= 0:
         ends = [float(x.get("end", x.get("timestamp", 0))) for x in transcript + ocr + scenes]
         duration = max(ends, default=0.0)
@@ -52,10 +54,18 @@ def build_timeline(
         title_source = next((text for text in speech if text.strip()), "")
         title = (title_source[:48] + ("…" if len(title_source) > 48 else "")) or "画面记录"
         frame_paths = list(dict.fromkeys(f"frames/{x['frame']}" for x in relevant_scenes))
+        frame_descriptions: list[dict[str, str]] = []
+        seen_frames: set[str] = set()
+        for x in relevant_scenes:
+            frame = x["frame"]
+            if frame in descriptions and frame not in seen_frames:
+                seen_frames.add(frame)
+                frame_descriptions.append({"frame": f"frames/{frame}", "text": descriptions[frame]})
         timeline.append({
             "start": round(start, 3), "end": round(end, 3), "title": title,
             "speech": speech, "ocr": ocr_lines,
             "frames": frame_paths,
+            "descriptions": frame_descriptions,
             "code": classified["code"], "commands": classified["commands"],
             "errors": classified["errors"], "notes": classified["notes"],
             "evidence": [

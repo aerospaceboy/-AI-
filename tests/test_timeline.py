@@ -22,3 +22,13 @@ def test_empty_sources() -> None:
 
 def test_zero_duration_and_empty_sources() -> None:
     assert build_timeline([], [], [], 0) == []
+
+
+def test_timeline_attaches_frame_descriptions() -> None:
+    scenes = [{"timestamp": 2, "frame": "a.jpg"}, {"timestamp": 3, "frame": "a.jpg"}]
+    result = build_timeline([], [], scenes, 10, descriptions={"a.jpg": "IDE 编辑界面"})
+    assert result[0]["descriptions"] == [{"frame": "frames/a.jpg", "text": "IDE 编辑界面"}]
+    assert result[0]["frames"] == ["frames/a.jpg"]
+
+    without = build_timeline([], [], scenes, 10)
+    assert without[0]["descriptions"] == []

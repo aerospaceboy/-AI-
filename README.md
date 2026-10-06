@@ -1,12 +1,12 @@
 # Video → AI 资料包
 
-将本地视频转换为可交给 ChatGPT、Codex、Claude 等 Agent 阅读的证据资料包。集成 faster-whisper、场景变化与最长间隔视觉证据、PaddleOCR、时间轴融合、OpenAI-compatible 分块总结、配置感知断点续跑及 ChatGPT 精简上传包。
+将本地视频转换为可交给 ChatGPT、Codex、Claude 等 Agent 阅读的证据资料包。集成 faster-whisper、场景变化与最长间隔视觉证据、PaddleOCR、视觉模型画面理解（qwen3-vl-flash）、时间轴融合、OpenAI-compatible 分块总结、配置感知断点续跑及 ChatGPT 精简上传包。
 
 ## 给 Windows 新手：解压即用版
 
 从项目维护者取得 `Video2AI-Windows-CPU.zip`，完整解压后打开 `Video2AI/先看我.txt`，再双击 `Video2AI.exe`。选择一个短 MP4 视频，保留默认设置，点击“开始生成”。默认 `base` 语音模型已经随包提供，无需首次下载；之后可复用处理缓存。完成后可点“查看网页报告”，或者在“打开上传包目录”中找到可交给 ChatGPT 的 `upload_bundle.zip`。
 
-此版默认使用 CPU，不要求 NVIDIA 显卡、Conda、Python、网络或单独安装 FFmpeg。视频留在本机处理；只有主动切换到 `tiny` 或 `small` 模型时，首次下载该模型需要网络。入门版暂不包含 OCR 和 AI 自动总结，这两项在界面中不可选；需要时请按下文安装完整版。便携版未经代码签名，只运行来自可信来源的副本。
+此版默认使用 CPU，不要求 NVIDIA 显卡、Conda、Python、网络或单独安装 FFmpeg。视频留在本机处理；只有主动切换到 `tiny` 或 `small` 模型时，首次下载该模型需要网络。入门版不包含 OCR（界面中不可选），需要时请按下文安装完整版。AI 总结为可选功能：在软件文件夹内新建 `OPENAI_API_KEY.txt` 写入 OpenAI-compatible 服务的密钥后，"AI 总结"会自动勾选；此时字幕与屏幕文字会发送到所配置的云端模型（默认阿里云百炼 `qwen3.8-flash`，可在随包的 `video2ai.yaml` 中更换）。便携版未经代码签名，只运行来自可信来源的副本。
 
 维护者在 Windows 的 `video2ai` Conda 环境中执行 `python -m pip install -r requirements-build.txt`，然后运行 `python scripts/build_portable.py`，可重新制作 ZIP；构建时如果本机尚无固定版本的 `base` 模型，需要联网获取。不要把 `dist/` 提交到 Git。
 
@@ -74,6 +74,12 @@ conda activate video2ai
 python video2ai.py "D:\Videos\test.mp4"
 ```
 
+传入文件夹即可批量处理（非递归）：按文件名顺序依次处理目录内所有支持的视频（mp4/mkv/mov/avi/webm/flv/wmv/m4v），每个视频输出到它旁边的同名 `_ai` 文件夹，缓存照常逐视频生效。批量模式下 `--output` 不可用；单个视频失败会记录错误并继续处理其余视频，结束时汇总成功与失败数量。
+
+```bat
+python video2ai.py "D:\课程录制"
+```
+
 项目根目录的 `video2ai.yaml` 会被自动读取。本机配置已设为 CUDA、`large-v3`、PaddleOCR 和常用 FPGA 热词，因此日常使用只需要上面这一条命令。也可显式指定其他配置：
 
 ```bat
@@ -122,9 +128,13 @@ VIDEO2AI_BASE_URL=http://127.0.0.1:11434/v1
 VIDEO2AI_MODEL=qwen2.5:7b
 ```
 
-复制 `.env.example` 后填写即可；`.env` 已被 Git 忽略。API Key 不会写入 metadata 或输出资料包。只设置模型而不设置 base URL 时，默认使用 `https://api.openai.com/v1`。
+复制 `.env.example` 后填写即可；`.env` 已被 Git 忽略。API Key 不会写入 metadata 或输出资料包；YAML 配置不支持 `api_key`，写入会被拒绝，以避免密钥随配置文件进入 Git。只设置模型而不设置 base URL 时，默认使用 `https://api.openai.com/v1`。
 
-长视频默认按 2 分钟时间轴分块。每个分块及摘要保存在 `raw/chunks/`，然后进行全局汇总。分段摘要缓存同时绑定内容、提示词版本、服务地址和模型，切换模型或证据变化时不会误用旧摘要。每次 LLM 调用都带有“仅根据字幕/OCR/时间戳/画面元数据、禁止脑补”的约束。
+长视频默认按 2 分钟时间轴分块。每个分块及摘要保存在 `raw/chunks/`，然后进行全局汇总。分块摘要默认 4 路并发请求（YAML `llm.workers` 或 `--llm-workers` 可调 1–16），单个分块失败不会影响其他分块，重跑时已完成的分块直接复用缓存；完全没有语音和屏幕文字的分块不会调用模型。分段摘要缓存同时绑定内容、提示词版本、服务地址和模型，切换模型或证据变化时不会误用旧摘要。每次 LLM 调用都带有“仅根据字幕/OCR/时间戳/画面元数据、禁止脑补”的约束。
+
+## AI 看图（视觉模型画面理解）
+
+在 YAML 中设置 `vlm.enabled: true`（或命令行 `--vlm`）后，流水线会用视觉模型（默认阿里云百炼 `qwen3-vl-flash`，可用 `vlm.model` 更换）对每个唯一关键帧生成一到两句客观画面描述，写入 `raw/vlm.json`，并融入时间轴、AI 总结、`timeline.md` 和网页报告的“AI 画面理解”章节。描述按帧缓存：个别帧调用失败只会在下次运行补齐失败的那几帧。该功能与 OCR 一样遵守“只描述画面上可见的内容”的反幻觉约束；默认关闭，开启后每个关键帧约一次视觉模型调用。
 
 ## 常用选项
 
@@ -139,10 +149,12 @@ VIDEO2AI_MODEL=qwen2.5:7b
 --max-frame-gap 30            无场景变化时的最大截图间隔
 --scene-sample-fps 2          场景检测采样率；0 表示逐帧扫描
 --timeline-chunk-seconds 120  基础证据时间段长度
+--llm-workers 4               分块摘要的并发请求数（1-16）
 --config FILE                读取 YAML 默认参数；默认自动读取 ./video2ai.yaml
 --version                    显示 video2ai 版本
 --ocr / --no-ocr             临时开启/关闭 OCR，覆盖 YAML
 --llm / --no-llm             临时开启/关闭 LLM，覆盖 YAML
+--vlm / --no-vlm             临时开启/关闭 AI 看图（视觉模型画面理解）
 --overwrite                   强制重新生成各阶段结果
 --force-asr                   仅强制 ASR
 --force-frames                仅强制关键帧
@@ -214,8 +226,9 @@ python -m pytest -q
 - OCR 初始化失败：程序会继续生成无 OCR 资料包。可先用 `--no-ocr`，再检查 PaddlePaddle wheel 是否支持当前 Windows/Python。
 - LLM 请求失败：程序会保留字幕、OCR、关键帧和时间轴，并生成基础 `summary.md`。
 - 视频无音轨：`metadata.json` 会记录 `has_audio: false`，画面/OCR/时间轴照常执行。
+- 音轨存在但解码失败：程序会警告并在 `metadata.json` 记录 `asr_error`，画面/OCR/时间轴照常生成；下次运行会自动重试 ASR。
 - 中文路径：程序使用 `pathlib` 和 subprocess 参数列表，不使用 `shell=True`。
 
 ## 第一版边界
 
-已实现 ASR、关键帧、保守去重、可选 OCR、代码/命令/错误线索分类、结构化时间轴、分块 LLM 总结、断点续跑与 Agent 接手文件。当前没有实现 WhisperX、说话人分离、VLM 直接看图、向量检索、Web UI 或批处理；这些均可沿现有后端接口后续扩展。
+已实现 ASR、关键帧、保守去重、可选 OCR、可选视觉模型画面理解、代码/命令/错误线索分类、结构化时间轴、分块 LLM 总结、断点续跑、目录批处理与 Agent 接手文件。当前没有实现 WhisperX、说话人分离、向量检索或 Web UI；这些均可沿现有后端接口后续扩展。

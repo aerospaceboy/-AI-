@@ -39,12 +39,38 @@ def main() -> int:
     for package in ("ctranslate2", "av", "onnxruntime"):
         command += ["--collect-binaries", package]
     command += ["--collect-data", "faster_whisper"]
+    # Conda keeps these runtime DLLs outside PyInstaller's dependency search
+    # path. Without them the frozen exe cannot import _tkinter/_ctypes at all.
+    for dll in ("tcl86t.dll", "tk86t.dll", "zlib1.dll", "ffi-8.dll", "libexpat.dll", "sqlite3.dll"):
+        source = next(
+            (
+                directory / dll
+                for directory in (Path(sys.prefix) / "Library" / "bin", Path(sys.prefix) / "DLLs")
+                if (directory / dll).is_file()
+            ),
+            None,
+        )
+        if source is None:
+            raise SystemExit(f"Required runtime DLL not found in the Conda environment: {dll}")
+        command += ["--add-binary", f"{source};."]
     for package in ("paddle", "paddleocr", "torch", "transformers", "librosa", "pandas", "pytest", "imageio_ffmpeg"):
         command += ["--exclude-module", package]
     command.append(str(ROOT / "video2ai_app.py"))
     subprocess.run(command, check=True, cwd=ROOT)
 
     app_dir = dist_dir / "Video2AI"
+    # Smoke test with piped stdio: a windowed exe without pipes has no usable
+    # stdout, and --version exercises every frozen import (tkinter included).
+    smoke = subprocess.run(
+        [str(app_dir / "Video2AI.exe"), "--worker", "--version"],
+        cwd=app_dir, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120,
+    )
+    if smoke.returncode != 0:
+        raise SystemExit(
+            "Smoke test failed: the built Video2AI.exe cannot start "
+            f"(exit code {smoke.returncode}).\n{smoke.stderr}"
+        )
+    print(f"Smoke test OK: {(smoke.stdout or '').strip()}")
     shutil.copyfile(ROOT / "config.beginner.yaml", app_dir / "video2ai.yaml")
     shutil.copyfile(ROOT / "给新手的使用说明.txt", app_dir / "先看我.txt")
     from huggingface_hub import snapshot_download

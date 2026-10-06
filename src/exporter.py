@@ -52,6 +52,10 @@ def export_timeline(path: Path, timeline: list[dict[str, Any]]) -> None:
         remaining = [x for x in item.get("ocr", []) if x not in item.get("code", []) + item.get("commands", []) + item.get("errors", [])]
         if remaining:
             lines += ["其他屏幕文字：", "", "```text", *remaining, "```", ""]
+        if item.get("descriptions"):
+            lines += ["AI 画面理解（模型生成，请以原图核实）：", "", *[
+                f"- `{d['frame']}`：{d['text']}" for d in item["descriptions"]
+            ], ""]
         if item.get("frames"):
             lines += ["相关画面：", "", *[f"`{x}`" for x in item["frames"]], ""]
         lines += ["---", ""]

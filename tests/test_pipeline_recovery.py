@@ -133,3 +133,63 @@ def test_llm_retries_after_request_failure(
     pipeline.run(options)
     assert (output / "summary.md").read_text(encoding="utf-8").strip() == "generated summary"
     assert pipeline.read_json(output / "raw" / "state.json")["summary"]["llm"] is True
+
+
+def test_audio_decode_failure_retries_on_next_run(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    video, output, _ = _setup_video(monkeypatch, tmp_path)
+
+    def broken_extract(*_args, **_kwargs):
+        raise pipeline.AudioDecodeError("corrupt audio track")
+
+    monkeypatch.setattr(pipeline, "extract_audio", broken_extract)
+    options = pipeline.Options(video=video, output=output, no_ocr=True, no_llm=True)
+    pipeline.run(options)
+    transcript = pipeline.read_json(output / "raw" / "transcript.json")
+    assert transcript["asr_error"] == "corrupt audio track"
+    assert pipeline.read_json(output / "raw" / "state.json")["asr"]["error"] == "corrupt audio track"
+    assert pipeline.read_json(output / "metadata.json")["asr_error"] == "corrupt audio track"
+
+    monkeypatch.setattr(pipeline, "extract_audio", lambda *_: False)
+    pipeline.run(options)
+    transcript = pipeline.read_json(output / "raw" / "transcript.json")
+    assert "asr_error" not in transcript
+    assert "asr_error" not in pipeline.read_json(output / "metadata.json")
+
+
+def test_vlm_stage_retries_only_missing_frames(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    video, output, _ = _setup_video(monkeypatch, tmp_path)
+
+    class FakeVLM:
+        model = "fake-vl"
+        calls = 0
+
+        @property
+        def cache_key(self) -> str:
+            return "fake-vl"
+
+        def describe_image(self, image_path: Path, instruction: str) -> str:
+            self.calls += 1
+            if self.calls == 1:
+                raise RuntimeError("transient failure")
+            return "IDE 编辑界面截图"
+
+    provider = FakeVLM()
+    monkeypatch.setattr(pipeline, "build_vlm_provider", lambda options: provider)
+    options = pipeline.Options(video=video, output=output, no_ocr=True, no_llm=True, no_vlm=False)
+    pipeline.run(options)
+    assert provider.calls == 1  # the only frame failed once
+    frame = pipeline.read_json(output / "raw" / "scenes.json")[0]["frame"]
+    assert pipeline.read_json(output / "raw" / "vlm.json") == {}
+
+    pipeline.run(options)  # retry: only the missing frame is described
+    assert provider.calls == 2
+    assert pipeline.read_json(output / "raw" / "vlm.json") == {frame: "IDE 编辑界面截图"}
+    timeline = pipeline.read_json(output / "timeline.json")
+    assert timeline[0]["descriptions"][0]["text"] == "IDE 编辑界面截图"
+
+    pipeline.run(options)  # complete now: the provider is not called again
+    assert provider.calls == 2

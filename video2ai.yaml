@@ -12,6 +12,10 @@ ocr:
   enabled: true
   backend: paddleocr
 llm:
+  enabled: true
+  base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
+  model: qwen3.8-flash
+vlm:
   enabled: false
-  base_url: http://127.0.0.1:11434/v1
-  model: qwen2.5:7b
+  model: qwen3-vl-flash
+  workers: 4

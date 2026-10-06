@@ -36,6 +36,50 @@ def test_yaml_config_rejects_unknown_options(tmp_path: Path) -> None:
         load_yaml_options(config)
 
 
+def test_yaml_config_rejects_api_key(tmp_path: Path) -> None:
+    config = tmp_path / "key.yaml"
+    config.write_text("llm:\n  enabled: true\n  api_key: sk-secret\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="api_key"):
+        load_yaml_options(config)
+
+
+def test_yaml_config_llm_workers(tmp_path: Path) -> None:
+    config = tmp_path / "workers.yaml"
+    config.write_text("llm:\n  enabled: true\n  workers: 2\n", encoding="utf-8")
+    options = load_yaml_options(config)
+    assert options["llm_workers"] == 2
+
+    config.write_text("llm:\n  workers: 99\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="workers"):
+        load_yaml_options(config)
+
+    config.write_text("llm:\n  workers: fast\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="workers"):
+        load_yaml_options(config)
+
+
+def test_yaml_config_vlm_section(tmp_path: Path) -> None:
+    config = tmp_path / "vlm.yaml"
+    config.write_text(
+        "vlm:\n  enabled: true\n  model: qwen3-vl-flash\n  workers: 2\n"
+        "  base_url: https://example.com/v1\n",
+        encoding="utf-8",
+    )
+    options = load_yaml_options(config)
+    assert options["no_vlm"] is False
+    assert options["vlm_model"] == "qwen3-vl-flash"
+    assert options["vlm_workers"] == 2
+    assert options["vlm_base_url"] == "https://example.com/v1"
+
+    config.write_text("vlm:\n  workers: 0\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="workers"):
+        load_yaml_options(config)
+
+    config.write_text("vlm:\n  mystery: true\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="Unknown VLM"):
+        load_yaml_options(config)
+
+
 def test_yaml_config_normalizes_numeric_fingerprints(tmp_path: Path) -> None:
     config = tmp_path / "numeric.yaml"
     config.write_text("max_frame_gap: 30\ntimeline_chunk_seconds: 120\n", encoding="utf-8")
