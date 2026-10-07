@@ -32,8 +32,13 @@ h1{font-size:clamp(28px,4vw,42px);line-height:1.16;margin:8px 0 10px}h2{font-siz
 .content-block{background:#f6f9fc;border:1px solid #e3ebf2;border-radius:10px;padding:16px;min-width:0}
 .line{margin:0 0 10px;line-height:1.65;font-size:14px;overflow-wrap:anywhere}.line:last-child{margin-bottom:0}
 .empty{color:#8493a3;font-size:13px}.frames{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:12px;margin-top:16px}
-figure{margin:0;border:1px solid #e0e8f0;border-radius:10px;overflow:hidden;background:#f6f9fc}figure a{display:block}figure img{display:block;width:100%;aspect-ratio:16/9;object-fit:contain;background:#091827}
+figure{margin:0;border:1px solid #e0e8f0;border-radius:10px;overflow:hidden;background:#f6f9fc}figure a{display:block;cursor:zoom-in}figure img{display:block;width:100%;aspect-ratio:16/9;object-fit:contain;background:#091827}
 figcaption{padding:8px 10px;font-size:12px;color:#526477;font-variant-numeric:tabular-nums}footer{color:#748595;font-size:12px;line-height:1.6;margin-top:24px}
+.lede-info{color:#8a99a9;font-size:13px;margin:-14px 0 24px}
+#lightbox{position:fixed;inset:0;background:#0b1622ee;display:flex;align-items:center;justify-content:center;flex-direction:column;z-index:20;cursor:zoom-out}
+#lightbox[hidden]{display:none}
+#lightbox img{max-width:92vw;max-height:84vh;object-fit:contain;background:#091827;border-radius:10px}
+#lightbox p{color:#cfe0ee;padding:10px;font-size:13px;margin:0}
 [hidden]{display:none!important}@media(max-width:900px){.layout{display:block}aside{position:static;height:auto;max-height:210px}.metrics{grid-template-columns:repeat(2,1fr)}main{padding:24px 18px 54px}}
 @media(max-width:620px){.columns{grid-template-columns:1fr}.chapter-head{display:block}.time{display:block;margin-bottom:8px}.toolbar{display:block}.count{display:block;margin-top:8px}}
 """
@@ -52,6 +57,22 @@ search.addEventListener('input', () => {
   }
   count.textContent = `${shown} / ${chapters.length} 章节`;
 });
+const lightbox = document.getElementById('lightbox');
+const lightboxImg = document.getElementById('lightbox-img');
+const lightboxCaption = document.getElementById('lightbox-caption');
+document.querySelectorAll('.frames figure').forEach(fig => {
+  const link = fig.querySelector('a');
+  if (!link) return;
+  link.addEventListener('click', event => {
+    event.preventDefault();
+    lightboxImg.src = link.href;
+    const caption = fig.querySelector('figcaption');
+    lightboxCaption.textContent = caption ? caption.textContent : '';
+    lightbox.hidden = false;
+  });
+});
+lightbox.addEventListener('click', () => { lightbox.hidden = true; });
+document.addEventListener('keydown', event => { if (event.key === 'Escape') lightbox.hidden = true; });
 """
 
 
@@ -111,6 +132,22 @@ def _render_descriptions(item: dict[str, Any]) -> str:
     return f'<div class="content-block" style="margin-top:12px"><h3>AI 画面理解（模型生成，请以原图核实）</h3>{"".join(rows)}</div>'
 
 
+def _render_info_line(metadata: dict[str, Any]) -> str:
+    bits: list[str] = []
+    if metadata.get("asr_model"):
+        bits.append(f"语音识别 faster-whisper {metadata['asr_model']}")
+    if metadata.get("ocr_engine") and metadata.get("ocr_engine") != "none":
+        bits.append(f"画面文字 {metadata['ocr_engine']}")
+    if metadata.get("vlm_model"):
+        bits.append(f"AI 看图 {metadata['vlm_model']}")
+    provider = str(metadata.get("summary_provider") or "")
+    if provider and provider != "none":
+        bits.append(f"AI 总结 {provider.rsplit(':', 1)[-1]}")
+    if metadata.get("device"):
+        bits.append(f"设备 {metadata['device']}")
+    return f'<p class="lede-info">{escape(" · ".join(bits))}</p>' if bits else ""
+
+
 def render_report(metadata: dict[str, Any], timeline: list[dict[str, Any]], summary: str) -> str:
     duration = format_timestamp(metadata.get("duration", 0))
     frame_count = int(metadata.get("frame_count", 0) or 0)
@@ -144,6 +181,7 @@ def render_report(metadata: dict[str, Any], timeline: list[dict[str, Any]], summ
         '<p class="nav-title">章节导航</p>' + "".join(navigation) + '</aside><main>'
         '<div class="eyebrow">本地视频资料包</div><h1>视频证据报告</h1>'
         '<p class="lede">按时间查看讲解、屏幕文字与关键画面。文字识别可能存在误差，请结合原始画面核实。</p>'
+        + _render_info_line(metadata) +
         '<div class="metrics">'
         f'<div class="metric"><strong>{duration}</strong><span>视频时长</span></div>'
         f'<div class="metric"><strong>{len(timeline)}</strong><span>时间章节</span></div>'
@@ -156,7 +194,9 @@ def render_report(metadata: dict[str, Any], timeline: list[dict[str, Any]], summ
         f'<span class="count" id="result-count">{len(timeline)} / {len(timeline)} 章节</span></div>'
         + content +
         '<footer>本报告在本机离线打开。技术结论应回到字幕、OCR 和关键画面核实。</footer>'
-        '</main></div><script>' + SCRIPT + '</script></body></html>'
+        '</main></div>'
+        '<div id="lightbox" hidden><img id="lightbox-img" alt=""><p id="lightbox-caption"></p></div>'
+        '<script>' + SCRIPT + '</script></body></html>'
     )
 
 

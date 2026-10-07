@@ -18,6 +18,35 @@ def export_transcript(path: Path, segments: list[dict[str, Any]]) -> None:
     write_text(path, "\n".join(lines))
 
 
+def _srt_timestamp(seconds: float) -> str:
+    seconds = max(0.0, float(seconds or 0))
+    whole = int(seconds)
+    millis = int(round((seconds - whole) * 1000))
+    if millis >= 1000:
+        whole += 1
+        millis = 0
+    hours, rem = divmod(whole, 3600)
+    minutes, secs = divmod(rem, 60)
+    return f"{hours:02d}:{minutes:02d}:{secs:02d},{millis:03d}"
+
+
+def export_srt(path: Path, segments: list[dict[str, Any]]) -> None:
+    """Player-ready SRT subtitles built from the transcript segments."""
+    blocks: list[str] = []
+    for item in segments:
+        text = str(item.get("text", "")).strip()
+        if not text:
+            continue
+        start = float(item.get("start", 0) or 0)
+        end = float(item.get("end", 0) or 0)
+        if end <= start:
+            end = start + 0.5
+        blocks.append(
+            f"{len(blocks) + 1}\n{_srt_timestamp(start)} --> {_srt_timestamp(end)}\n{text}"
+        )
+    write_text(path, "\n\n".join(blocks) + ("\n" if blocks else "无可用字幕。\n"))
+
+
 def export_ocr(path: Path, records: list[dict[str, Any]]) -> None:
     lines = ["# 屏幕文字 OCR", ""]
     visible = [x for x in records if x.get("text")]
@@ -86,6 +115,7 @@ def export_package_readme(path: Path, source: Path, duration: float) -> None:
 - `report.html`：在浏览器中离线浏览和搜索证据。
 - `timeline.md`：按时间记录完整过程。
 - `transcript.md`：原始语音转写。
+- `subtitle.srt`：可直接导入播放器或剪辑软件的字幕文件。
 - `ocr.md`：屏幕 OCR 原文。
 - `timeline.json`：机器可解析时间轴。
 - `frames/`：关键视频画面。

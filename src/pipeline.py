@@ -16,7 +16,7 @@ from . import __version__
 from .asr import resolve_device, transcribe
 from .audio import AudioDecodeError, extract_audio
 from .chatgpt_export import export_chatgpt_package
-from .exporter import export_handoff, export_ocr, export_package_readme, export_timeline, export_transcript
+from .exporter import export_handoff, export_ocr, export_package_readme, export_srt, export_timeline, export_transcript
 from .llm import NoLLMProvider, OpenAICompatibleProvider, provider_from_options
 from .ocr import create_backend, run_ocr
 from .report import export_report
@@ -112,6 +112,7 @@ class RunContext:
     vlm_rebuilt: bool = False
     timeline_rebuilt: bool = False
     summary_rebuilt: bool = False
+    summary_provider: str = "none"
 
     @property
     def raw(self) -> Path:
@@ -500,6 +501,7 @@ def _stage_timeline(
 def _stage_summary(ctx: RunContext, timeline: list[dict[str, Any]], timeline_signature: str) -> str:
     options = ctx.options
     provider = provider_from_options(options.no_llm, options.base_url, options.model, options.api_key)
+    ctx.summary_provider = provider.cache_key
     signature = _signature({"version": 3, "timeline": timeline_signature, "provider": provider.cache_key})
     path = ctx.output / "summary.md"
     summary_state = ctx.state.get("summary")
@@ -588,6 +590,8 @@ def run(options: Options) -> Path:
     transcript = _stage_transcript(ctx, initial_prompt, signatures.asr)
     transcript = transcript or {"segments": [], "has_audio": False}
     segments = transcript.get("segments", [])
+    if segments:
+        export_srt(ctx.output / "subtitle.srt", segments)
 
     scenes = _stage_keyframes(ctx, signatures)
     ocr_records, ocr_engine = _stage_ocr(ctx, scenes, signatures)
@@ -604,6 +608,7 @@ def run(options: Options) -> Path:
         "frame_count": len({x["frame"] for x in scenes}),
         "visual_point_count": len(scenes), "python_version": platform.python_version(),
         "platform": platform.platform(), "video2ai_version": __version__,
+        "summary_provider": ctx.summary_provider,
     }
     if vlm_provider is not None:
         metadata["vlm_model"] = vlm_provider.model

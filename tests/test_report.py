@@ -34,3 +34,24 @@ def test_report_exports_single_offline_file(tmp_path: Path) -> None:
     assert "已完成字幕与 OCR" in text
     assert "没有可用的时间轴内容" in text
     assert "https://" not in text
+
+
+def test_report_shows_engine_info_and_lightbox() -> None:
+    html = render_report(
+        {
+            "duration": 12, "frame_count": 1, "asr_model": "large-v3",
+            "ocr_engine": "paddleocr", "vlm_model": "qwen3-vl-flash",
+            "summary_provider": "openai-compatible:https://example.com/v1:qwen3.8-flash",
+            "device": "cuda",
+        },
+        [], "",
+    )
+    assert "faster-whisper large-v3" in html
+    assert "AI 看图 qwen3-vl-flash" in html
+    assert "AI 总结 qwen3.8-flash" in html
+    assert "设备 cuda" in html
+    assert 'id="lightbox"' in html
+    # Disabled or absent engines stay silent.
+    minimal = render_report({"duration": 2, "frame_count": 0, "summary_provider": "none"}, [], "")
+    assert "AI 总结" not in minimal
+    assert '<p class="lede-info">' not in minimal

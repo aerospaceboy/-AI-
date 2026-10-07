@@ -178,6 +178,7 @@ test_ai/
 ├── summary.md
 ├── report.html               离线可搜索的网页报告
 ├── transcript.md
+├── subtitle.srt
 ├── timeline.md
 ├── timeline.json
 ├── ocr.md
